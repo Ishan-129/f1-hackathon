@@ -8,3 +8,6 @@ python-multipart==0.0.32
 torch
 transformers
 soundfile
+datasets
+pyarrow
+accelerate

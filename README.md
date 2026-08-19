@@ -76,6 +76,26 @@ PitPulse uses three Hugging Face Hub models:
 
 > **⚠ Manual Step:** Per hackathon rules, each team member must create an individual Hugging Face account and verify real Hub usage. Account creation and any required access tokens are a manual setup step — not automated by this codebase.
 
+### Fine-tune on the bundled F1 radio data
+
+The `model/` directory contains the five Parquet shards from the F1 team-radio dataset. The backend includes a streaming Whisper fine-tuner that reads the embedded MP3 bytes, resamples them to 16 kHz, and trains against the supplied `transcription` field. It also writes an F1 driver/race prompt used during inference.
+
+Run a quick local smoke check:
+
+```powershell
+cd backend
+python train_model.py --max-samples 8 --max-steps 1 --output-dir models/f1-whisper
+```
+
+For a real fine-tune, use a CUDA machine and run the full corpus:
+
+```powershell
+cd backend
+python train_model.py --output-dir models/f1-whisper --num-train-epochs 3
+```
+
+Once `backend/models/f1-whisper/config.json` exists, the API automatically uses it for uploads. Set `PITPULSE_ASR_MODEL` to override the checkpoint path. The generated model directory is ignored by git because it contains large binary weights.
+
 ---
 
 ## Demo Assets
