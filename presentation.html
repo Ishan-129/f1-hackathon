@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PitPulse — F1 Driver Acoustic Sentiment & Telemetry Correlation</title>
+    <style>
+        :root {
+            --color-primary: #E10600; /* F1 Red */
+            --color-bg: #0D0D0D;      /* Deep Dark */
+            --color-card: #1E1E1E;    /* Slate Card */
+            --color-text: #FFFFFF;
+            --color-text-muted: #B0B0B0;
+            --color-cyan: #00F5FF;    /* Telemetry Cyan */
+            --color-green: #2ECC71;   /* Calm Green */
+            --color-orange: #F39C12;  /* Tired Orange */
+            --color-border: #333333;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .slide-deck {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        @media (min-width: 769px) {
+            .slide-deck {
+                max-width: calc(100vh * 16 / 9);
+                max-height: calc(100vw * 9 / 16);
+                margin: auto;
+                position: absolute;
+                inset: 0;
+                border: 1px solid var(--color-border);
+                box-shadow: 0 20px 80px rgba(0,0,0,0.8);
+            }
+        }
+
+        .slide {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            padding: 60px 80px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            transform: scale(0.98);
+            background: radial-gradient(circle at center, #1E1E1E 0%, #0D0D0D 100%);
+        }
+
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1);
+        }
+
+        /* Top Racing Stripe */
+        .stripe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(90deg, var(--color-primary) 0%, #FF6B6B 100%);
+        }
+
+        .header {
+            margin-bottom: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .category {
+            color: var(--color-primary);
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 4px;
+            font-family: monospace;
+        }
+
+        .title {
+            font-size: 40px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #FFFFFF 0%, #E0E0E0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Grid layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            height: 100%;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 30px;
+            height: 100%;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            height: 100%;
+        }
+
+        .card {
+            background-color: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: var(--color-primary);
+        }
+
+        .card-accent {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background-color: var(--color-primary);
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--color-primary);
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .bullet-point {
+            display: flex;
+            gap: 12px;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .bullet-point strong {
+            color: var(--color-text);
+            min-width: 140px;
+            display: inline-block;
+        }
+
+        .bullet-point span {
+            color: var(--color-text-muted);
+        }
+
+        /* Slide specific styles */
+        /* Title Slide */
+        .slide-title-page {
+            justify-content: center;
+            align-items: flex-start;
+            padding-left: 120px;
+            background: linear-gradient(135deg, rgba(13,13,13,0.95) 0%, rgba(30,30,30,0.9) 100%), 
+                        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="none" stroke="%23333" stroke-width="0.5" stroke-dasharray="5 5"/></svg>');
+        }
+
+        .hero-title {
+            font-size: 80px;
+            font-weight: 900;
+            letter-spacing: -2px;
+            color: var(--color-text);
+            line-height: 1.0;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .hero-title span {
+            color: var(--color-primary);
+        }
+
+        .hero-subtitle {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 24px;
+            letter-spacing: -0.5px;
+        }
+
+        .hero-desc {
+            font-size: 16px;
+            color: var(--color-text-muted);
+            max-width: 700px;
+            line-height: 1.6;
+            margin-bottom: 60px;
+        }
+
+        .hero-footer {
+            font-family: monospace;
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: var(--color-cyan);
+            border-top: 1px solid var(--color-border);
+            padding-top: 20px;
+            width: 100%;
+            max-width: 700px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Code/Formula box */
+        .code-box {
+            background-color: #050505;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--color-cyan);
+            margin-top: 10px;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-family: monospace;
+            display: inline-block;
+        }
+
+        .badge-red { background-color: rgba(225,6,0,0.2); color: var(--color-primary); border: 1px solid var(--color-primary); }
+        .badge-cyan { background-color: rgba(0,245,255,0.2); color: var(--color-cyan); border: 1px solid var(--color-cyan); }
+        .badge-green { background-color: rgba(46,204,113,0.2); color: var(--color-green); border: 1px solid var(--color-green); }
+        .badge-orange { background-color: rgba(243,156,18,0.2); color: var(--color-orange); border: 1px solid var(--color-orange); }
+
+        /* Mock Telemetry Chart */
+        .chart-mockup {
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background-color: #090909;
+            padding: 20px;
+            height: 180px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .chart-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            height: 120px;
+            border-bottom: 1px solid #333;
+            border-left: 1px solid #333;
+            padding-left: 10px;
+            padding-bottom: 2px;
+        }
+
+        .chart-bar-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+
+        .chart-bar {
+            width: 100%;
+            background-color: var(--color-cyan);
+            border-radius: 2px 2px 0 0;
+            transition: height 1s ease;
+        }
+
+        .chart-bar.stressed {
+            background-color: var(--color-primary);
+        }
+
+        .chart-label {
+            font-size: 9px;
+            font-family: monospace;
+            color: var(--color-text-muted);
+            margin-top: 4px;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 15px;
+            font-size: 10px;
+            font-family: monospace;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-color {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* Navigation controls */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-cyan) 100%);
+            transition: width 0.3s;
+            z-index: 1000;
+        }
+
+        .nav-controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            z-index: 1000;
+            background: rgba(30, 30, 30, 0.8);
+            padding: 8px 20px;
+            border-radius: 30px;
+            border: 1px solid var(--color-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .slide-counter {
+            color: var(--color-text-muted);
+            font-size: 12px;
+            font-family: monospace;
+            font-weight: 700;
+        }
+
+        /* Animation classes */
+        .animate-fade-up > * {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeUp 0.6s ease-out forwards;
+        }
+
+        .animate-fade-up > *:nth-child(1) { animation-delay: 0.1s; }
+        .animate-fade-up > *:nth-child(2) { animation-delay: 0.25s; }
+        .animate-fade-up > *:nth-child(3) { animation-delay: 0.4s; }
+        .animate-fade-up > *:nth-child(4) { animation-delay: 0.55s; }
+
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Progress Bar -->
+    <div class="progress-bar" id="progressBar"></div>
+
+    <div class="slide-deck">
+        <!-- SLIDE 1: TITLE -->
+        <div class="slide active slide-title-page">
+            <div class="stripe"></div>
+            <div class="hero-title">PIT<span>PULSE</span></div>
+            <div class="hero-subtitle">F1 Driver Acoustic Sentiment & Telemetry Correlation</div>
+            <div class="hero-desc">
+                Detecting driver stress, fatigue, and telemetry pace loss in real time to power objective, automated race-engineering strategy.
+            </div>
+            <div class="hero-footer">
+                <span>HACKATHON PRESENTATION</span>
+                <span>FASTAPI + NEXT.JS + HUGGING FACE</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 2: THE PROBLEM -->
+        <div class="slide">
+            <div class="stripe"></div>
+            <div class="header">
+                <span class="category">Challenge Context</span>
+                <h2 class="title">The Driver's Invisible Struggle</h2>
+            </div>
+            <div class="grid-2 animate-fade-up">
+                <div class="card">
+                    <div class="card-accent"></div>
+                    <div class="card-title">HIGH-STRESS COGNITIVE LOAD</div>
+                    <div class="card-content">
+                        <div class="bullet-point">
+                            <strong>Physical Strain</strong>
+                            <span>Up to 5G lateral forces, 170+ BPM heart rates, and 4kg dehydration per race.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Cognitive Limits</strong>
+                            <span>Deciding micro-strategies at 300+ km/h leaves zero margin for error or fatigue.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Pace Bleed</strong>
+                            <span>Delayed reactions due to mental strain bleed crucial milliseconds from sector splits.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-accent" style="background-color: var(--color-cyan);"></div>
+                    <div class="card-title" style="color: var(--color-cyan);">THE PIT WALL BLIND SPOT</div>
+                    <div class="card-content">
+                        <div class="bullet-point">
+                            <strong>Telemetry Isolation</strong>
+                            <span>Engineers monitor car health (tires, engine, brake temps) but have no direct data on driver stress.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Subjective Comms</strong>
+                            <span>Radio evaluation is based on subjective "gut feelings" under high-pressure scenarios.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Acoustic Noise</strong>
+                            <span>V6 engine roar and wind noise mask speech fatigue markers, blocking manual analysis.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: THE SOLUTION -->
+        <div class="slide">
+            <div class="stripe"></div>
+            <div class="header">
+                <span class="category">The Solution</span>
+                <h2 class="title">The PitPulse Framework</h2>
+            </div>
+            <div class="grid-3 animate-fade-up">
+                <div class="card">
+                    <div class="card-title"><span class="badge badge-red">01</span> ACOUSTIC CAPTURE</div>
+                    <div class="card-content">
+                        <div class="bullet-point">
+                            <span>Ingests raw driver team radio feeds, dynamically downmixing to 16kHz mono audio. Runs transcription via local ML speech models.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title" style="color: var(--color-cyan);"><span class="badge badge-cyan">02</span> STATE CLASSIFICATION</div>
+                    <div class="card-content">
+                        <div class="bullet-point">
+                            <span>Fuses text sentiment analysis and vocal emotion models. Applies formulas combining volume and silence features to label driver state.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title" style="color: var(--color-green);"><span class="badge badge-green">03</span> TELEMETRY CORRELATION</div>
+                    <div class="card-content">
+                        <div class="bullet-point">
+                            <span>Correlates stress triggers to lap telemetry, calculating baselines and deltas to provide automated engineering pit strategy suggestions.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 4: TECH APPROACH - AI PIPELINE -->
+        <div class="slide">
+            <div class="stripe"></div>
+            <div class="header">
+                <span class="category">Tech Approach</span>
+                <h2 class="title">Multimodal Sentiment Fusion</h2>
+            </div>
+            <div class="grid-2 animate-fade-up">
+                <div class="card">
+                    <div class="card-accent"></div>
+                    <div class="card-title">ML MODEL ARCHITECTURE</div>
+                    <div class="card-content" style="gap: 10px;">
+                        <div class="bullet-point">
+                            <strong>ASR Engine</strong>
+                            <span><code>openai/whisper-tiny</code> fine-tuned on custom F1 driver transcripts.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Text Emotion</strong>
+                            <span><code>distilroberta-base</code> mapping anger, fear, disgust, and sadness.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Vocal Emotion (SER)</strong>
+                            <span><code>wav2vec2-base-superb-er</code> reading raw mono waveform signals.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Acoustic Stats</strong>
+                            <span>Extracts speech energy (RMS) and silence ratio to evaluate fatigue.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-accent" style="background-color: var(--color-cyan);"></div>
+                    <div class="card-title" style="color: var(--color-cyan);">FUSION & STATE MATRICES</div>
+                    <div class="card-content">
+                        <div class="code-box">
+                            Final Stress = 45% Voice + 30% Text + 15% Urgency + 10% Fatigue
+                        </div>
+                        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Low Stress, Low Fatigue</span>
+                                <span class="badge badge-green">CALM</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Combined Stress Score > 50%</span>
+                                <span class="badge badge-red">STRESSED</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Speech Pauses & Fatigue > 50%</span>
+                                <span class="badge badge-orange">TIRED</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 5: TECH APPROACH - CORRELATION ENGINE -->
+        <div class="slide">
+            <div class="stripe"></div>
+            <div class="header">
+                <span class="category">Tech Approach</span>
+                <h2 class="title">Telemetry & Correlation Engine</h2>
+            </div>
+            <div class="grid-3 animate-fade-up">
+                <div class="card">
+                    <div class="card-title">01 / CSV INGESTION</div>
+                    <div class="card-content">
+                        <p style="color: var(--color-text-muted); font-size: 14px; line-height: 1.6;">
+                            Ingests telemetry data using Pandas. Deduplicates existing records in the SQLite database and calculates fallback sector splits (Lap Time / 3) if telemetry sector fields are missing.
+                        </p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title" style="color: var(--color-cyan);">02 / CALM BASELINE</div>
+                    <div class="card-content">
+                        <p style="color: var(--color-text-muted); font-size: 14px; line-height: 1.6;">
+                            Detects the first transition lap where driver status shifts from Calm to Stressed or Tired. Computes an anchor baseline by averaging the last 3 Calm laps preceding this trigger.
+                        </p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title" style="color: var(--color-primary);">03 / CORRELATION</div>
+                    <div class="card-content">
+                        <p style="color: var(--color-text-muted); font-size: 14px; line-height: 1.6;">
+                            Calculates pace loss delta: <code>(Lap Time - Baseline) / Baseline * 100</code>. Pinpoints exactly which sector is degrading and outputs plain-language tactical directives.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 6: THE STAGE DEMO STORY -->
+        <div class="slide">
+            <div class="stripe"></div>
+            <div class="header">
+                <span class="category">Stage Demo</span>
+                <h2 class="title">The 2-Minute Stage Pitch Script</h2>
+            </div>
+            <div class="grid-4 animate-fade-up">
+                <div class="card" style="padding: 20px;">
+                    <span class="badge badge-cyan" style="width: fit-content;">STEP 1</span>
+                    <h3 style="font-size: 15px; margin-top: 5px;">Seeding Session</h3>
+                    <p style="font-size: 12px; color: var(--color-text-muted); line-height: 1.5;">
+                        Click "Load Demo Session" on landing page. Instantly populates 22 laps of telemetry and 3 pre-computed radio events to bypass cold model-load latency.
+                    </p>
+                </div>
+                <div class="card" style="padding: 20px;">
+                    <span class="badge badge-red" style="width: fit-content;">STEP 2</span>
+                    <h3 style="font-size: 15px; margin-top: 5px;">Trigger Event</h3>
+                    <p style="font-size: 12px; color: var(--color-text-muted); line-height: 1.5;">
+                        Select Lap 18. Transcript: <i>"The tires are gone, I have no grip."</i> Fused stress gauge spikes to 78% flashing STRESSED state.
+                    </p>
+                </div>
+                <div class="card" style="padding: 20px;">
+                    <span class="badge badge-red" style="width: fit-content;">STEP 3</span>
+                    <h3 style="font-size: 15px; margin-top: 5px;">Telemetry correlation</h3>
+                    <p style="font-size: 12px; color: var(--color-text-muted); line-height: 1.5;">
+                        Show the telemetry chart overlay. Lap times increase to 92.16s, indicating a +2.4% pace loss delta relative to the baseline.
+                    </p>
+                </div>
+                <div class="card" style="padding: 20px;">
+                    <span class="badge badge-green" style="width: fit-content;">STEP 4</span>
+                    <h3 style="font-size: 15px; margin-top: 5px;">Engineer Directives</h3>
+                    <p style="font-size: 12px; color: var(--color-text-muted); line-height: 1.5;">
+                        Navigate to Insights. Point out automated warnings: prepare pit swap to Plan B, and minimize driver radio traffic to reduce load.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 7: TECH STACK & SYSTEM HIGHLIGHTS -->
+        <div class="slide">
+            <div class="stripe"></div>
+            <div class="header">
+                <span class="category">Technical Overview</span>
+                <h2 class="title">Tech Stack & System Hardening</h2>
+            </div>
+            <div class="grid-2 animate-fade-up">
+                <div class="card">
+                    <div class="card-accent"></div>
+                    <div class="card-title">PRODUCTION STACK</div>
+                    <div class="card-content" style="gap: 12px;">
+                        <div class="bullet-point">
+                            <strong>Frontend</strong>
+                            <span>Next.js 15+, React 19, TypeScript, Tailwind CSS v4, Recharts.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Backend</strong>
+                            <span>Python 3.14, FastAPI, SQLAlchemy, SQLite, Uvicorn.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>ML Frameworks</strong>
+                            <span>PyTorch, Transformers (Whisper, DistilRoBERTa, Wav2Vec2).</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Data Processing</strong>
+                            <span>Pandas, NumPy for telemetry calibration.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-accent" style="background-color: var(--color-cyan);"></div>
+                    <div class="card-title" style="color: var(--color-cyan);">STAGE HARDENING</div>
+                    <div class="card-content" style="gap: 12px;">
+                        <div class="bullet-point">
+                            <strong>100% Offline Edge</strong>
+                            <span>Runs entirely locally. No external APIs needed. No Wi-Fi risk.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>React Shared Context</strong>
+                            <span>Updates propagate across all dashboard views in real time.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Seeded Demo Mode</strong>
+                            <span>One-click seeding ensures a flawless live pitch scenario.</span>
+                        </div>
+                        <div class="bullet-point">
+                            <strong>Cached Singletons</strong>
+                            <span>Sequential model lazy-loading caches checkpoints to run subsequent uploads in under 5s.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Controls -->
+    <div class="nav-controls">
+        <button class="nav-btn" onclick="prevSlide()">←</button>
+        <span class="slide-counter"><span id="current">1</span> / <span id="total">7</span></span>
+        <button class="nav-btn" onclick="nextSlide()">→</button>
+    </div>
+
+    <script>
+        let current = 1;
+        const slides = document.querySelectorAll('.slide');
+        const total = slides.length;
+        document.getElementById('total').textContent = total;
+
+        function showSlide(n) {
+            if (n < 1) n = 1;
+            if (n > total) n = total;
+            current = n;
+            
+            slides.forEach((slide, i) => {
+                slide.classList.toggle('active', i === n - 1);
+            });
+            
+            document.getElementById('current').textContent = n;
+            document.getElementById('progressBar').style.width = (n / total * 100) + '%';
+        }
+
+        function nextSlide() { 
+            if (current < total) {
+                showSlide(current + 1); 
+            }
+        }
+        
+        function prevSlide() { 
+            if (current > 1) {
+                showSlide(current - 1); 
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') { 
+                e.preventDefault(); 
+                nextSlide(); 
+            }
+            if (e.key === 'ArrowLeft') { 
+                e.preventDefault(); 
+                prevSlide(); 
+            }
+        });
+
+        // Click anywhere to advance, unless clicking control UI
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.nav-controls')) {
+                nextSlide();
+            }
+        });
+
+        showSlide(1);
+    </script>
+</body>
+</html>
