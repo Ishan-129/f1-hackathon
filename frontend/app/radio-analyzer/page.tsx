@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from "react";
-import { Radio, Mic, AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Radio, Mic, MicOff, AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
 import { useSession } from "../context/SessionContext";
 
 interface PastRadioClip {
@@ -27,6 +27,84 @@ export default function RadioAnalyzerPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loadingFeed, setLoadingFeed] = useState(false);
+
+  // ── Live Mic Recording State ──
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Toggle microphone recording on/off
+  const toggleRecording = useCallback(async () => {
+    if (isRecording) {
+      // ── Stop recording ──
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      setRecordingDuration(0);
+      return;
+    }
+
+    // ── Start recording ──
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Choose a supported MIME type
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        // Release mic tracks
+        stream.getTracks().forEach(track => track.stop());
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const ext = mimeType.includes('webm') ? 'webm' : 'wav';
+        const recordedFile = new File(
+          [audioBlob],
+          `live_recording_${Date.now()}.${ext}`,
+          { type: mimeType }
+        );
+
+        setFile(recordedFile);
+        audioChunksRef.current = [];
+      };
+
+      mediaRecorder.start(250); // collect data in 250ms chunks
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      setError(null);
+
+      // Tick the duration counter every second
+      setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      setError("MICROPHONE ACCESS DENIED — Check browser permissions.");
+    }
+  }, [isRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      mediaRecorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+    };
+  }, []);
 
   // Fetch previous radio transmissions for session
   const fetchTimelineFeed = async () => {
@@ -121,23 +199,60 @@ export default function RadioAnalyzerPage() {
             // RADIO TRANSMISSION INGESTION
           </h2>
 
-          {/* Drag & Drop selector */}
-          <div 
-            onClick={() => fileInputRef.current?.click()}
-            className="border border-dashed border-gray-800 bg-black/40 hover:bg-black/80 transition p-8 text-center rounded cursor-pointer"
-          >
-            <Mic className="mx-auto mb-2 text-gray-500" size={32} />
-            <div className="text-xs font-bold text-gray-300">
-              {file ? file.name : "LOAD AUDIO WAVE PACKET"}
+          {/* Dual Input: File Upload + Live Recording */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* File Upload Zone */}
+            <div 
+              onClick={() => !isRecording && fileInputRef.current?.click()}
+              className={`border border-dashed border-gray-800 bg-black/40 hover:bg-black/80 transition p-6 text-center rounded cursor-pointer ${isRecording ? 'opacity-40 pointer-events-none' : ''}`}
+            >
+              <Mic className="mx-auto mb-2 text-gray-500" size={28} />
+              <div className="text-[10px] font-bold text-gray-300 truncate">
+                {file && !isRecording ? file.name : "LOAD FILE"}
+              </div>
+              <p className="text-[9px] text-gray-600 mt-1">WAV / MP3 / WEBM</p>
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                accept="audio/*"
+                className="hidden" 
+              />
             </div>
-            <p className="text-[10px] text-gray-600 mt-1">WAV / MP3 FORMAT SUPPORTED</p>
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              accept="audio/*"
-              className="hidden" 
-            />
+
+            {/* Live Mic Recording Button */}
+            <div
+              onClick={!uploading ? toggleRecording : undefined}
+              className={`border border-dashed rounded p-6 text-center cursor-pointer transition relative overflow-hidden ${
+                isRecording
+                  ? 'border-red-600 bg-red-950/30 hover:bg-red-950/50'
+                  : 'border-gray-800 bg-black/40 hover:bg-black/80'
+              } ${uploading ? 'opacity-40 pointer-events-none' : ''}`}
+            >
+              {/* Pulsing ring animation when recording */}
+              {isRecording && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-16 h-16 rounded-full border-2 border-red-500 animate-ping opacity-20" />
+                </div>
+              )}
+              <div className="relative z-10">
+                {isRecording ? (
+                  <MicOff className="mx-auto mb-2 text-red-500" size={28} />
+                ) : (
+                  <Mic className="mx-auto mb-2 text-red-500" size={28} />
+                )}
+                <div className={`text-[10px] font-bold ${isRecording ? 'text-red-400' : 'text-gray-300'}`}>
+                  {isRecording ? 'STOP RECORDING' : 'RECORD LIVE'}
+                </div>
+                {isRecording ? (
+                  <p className="text-[10px] text-red-400 mt-1 tabular-nums animate-pulse">
+                    ● REC {String(Math.floor(recordingDuration / 60)).padStart(2, '0')}:{String(recordingDuration % 60).padStart(2, '0')}
+                  </p>
+                ) : (
+                  <p className="text-[9px] text-gray-600 mt-1">CLICK TO START</p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Lap association input */}
@@ -154,7 +269,7 @@ export default function RadioAnalyzerPage() {
 
           <button 
             type="submit"
-            disabled={!file || uploading}
+            disabled={!file || uploading || isRecording}
             className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 text-white font-bold py-3 px-4 rounded tracking-wider transition uppercase cursor-pointer"
           >
             {uploading ? "TRANSMITTING..." : "TRANSMIT PACKET"}

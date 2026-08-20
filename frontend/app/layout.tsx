@@ -20,8 +20,7 @@ const geistMono = Geist_Mono({
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { sessionId, sessionName, connected, setSessionId, setSessionName, setConnected } = useSession();
-  const [loadingDemo, setLoadingDemo] = useState(false);
+  const { sessionName, connected } = useSession();
   const [utcTime, setUtcTime] = useState('--:--:--');
 
   // Live UTC clock
@@ -31,22 +30,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-
-  const loadDemo = async () => {
-    setLoadingDemo(true);
-    try {
-      const res = await fetch("http://localhost:8000/api/session/demo", { method: "POST" });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setSessionId(data.id);
-      setSessionName(data.name);
-      setConnected(true);
-    } catch {
-      alert("Failed to load demo session. Is the backend server running?");
-    } finally {
-      setLoadingDemo(false);
-    }
-  };
 
   return (
     <body className="min-h-full flex flex-col font-sans">
@@ -63,21 +46,17 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       {/* Main F1 HUD Navigation */}
       <header className="bg-gray-950 border-b-2 border-red-600 px-6 py-4 flex justify-between items-center shrink-0 select-none">
         <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="text-xl font-extrabold tracking-tighter italic text-white hover:text-red-500 transition-colors">
+          <Link href="/" className="text-xl font-extrabold tracking-tighter italic text-white hover:text-red-500 transition-colors">
             PIT<span className="text-red-600">PULSE</span>
           </Link>
           <div className="hidden md:flex border-l border-gray-800 pl-6 text-sm text-gray-400 font-mono">
             SESSION: <span className="text-white font-bold ml-1">{sessionName.toUpperCase()}</span>
             <span className="mx-3 text-gray-700">|</span>
-            DRIVER: <span className="text-white font-bold ml-1">DEMO DRIVER // CAR 01</span>
+            DRIVER: <span className="text-white font-bold ml-1">CAR 01</span>
           </div>
         </div>
 
         <nav className="flex flex-wrap gap-3 items-center">
-          <button onClick={loadDemo} disabled={loadingDemo} className="px-3 py-2 text-xs font-bold tracking-wider rounded border border-amber-700 text-amber-400 hover:bg-amber-950 disabled:opacity-50 cursor-pointer transition-colors flex items-center gap-2">
-            {loadingDemo && <span className="loading-spinner loading-spinner-sm" style={{borderTopColor: '#f59e0b'}} />}
-            {loadingDemo ? "LOADING DEMO..." : "LOAD DEMO SESSION"}
-          </button>
           <Link href="/dashboard" className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold tracking-wider rounded border transition ${pathname === '/dashboard' ? 'bg-red-600 border-red-600 text-white' : 'border-gray-800 text-gray-400 hover:text-white'}`} id="nav-dashboard">
             <LayoutDashboard size={14} />
             DASHBOARD
