@@ -38,7 +38,11 @@ from transformers import (
 
 TARGET_SAMPLE_RATE = 16_000
 DEFAULT_MODEL = "openai/whisper-tiny"
-DEFAULT_DATA_DIR = Path(__file__).resolve().parents[1] / "model"
+DEFAULT_DATA_DIR = (
+    Path(__file__).resolve().parents[1] / "models"
+    if (Path(__file__).resolve().parents[1] / "models").exists()
+    else Path(__file__).resolve().parents[1] / "model"
+)
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "models" / "f1-whisper"
 
 
@@ -164,16 +168,16 @@ class DataCollatorSpeechSeq2Seq:
         return batch
 
 
-def build_prompt(source, output_dir: Path) -> None:
+def build_prompt(source, output_dir: Path, max_rows: int = 150) -> None:
     """Create a compact domain prompt from driver and race names in the corpus."""
     drivers: set[str] = set()
     grands_prix: set[str] = set()
-    for row in source:
+    for i, row in enumerate(source):
         if row.get("driver_id"):
             drivers.add(row["driver_id"])
         if row.get("grand_prix"):
             grands_prix.add(row["grand_prix"].replace(" Grand Prix", ""))
-        if len(drivers) >= 64 and len(grands_prix) >= 64:
+        if (len(drivers) >= 16 and len(grands_prix) >= 16) or i >= max_rows:
             break
     # Keep the prompt comfortably below Whisper's decoder context window.
     prompt = "Formula 1 team radio. Drivers: " + ", ".join(sorted(drivers)[:16])
@@ -182,6 +186,7 @@ def build_prompt(source, output_dir: Path) -> None:
     (output_dir / "f1_radio_prompt.json").write_text(
         json.dumps({"prompt": prompt}, indent=2), encoding="utf-8"
     )
+    print(f"Generated F1 radio domain prompt: {prompt}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -205,7 +210,7 @@ def main() -> None:
     if not 0 < args.eval_percent < 100:
         raise ValueError("--eval-percent must be between 1 and 99")
 
-    source = load_stream(args.data_dir)
+    print(f"Loading F1 radio dataset from {args.data_dir}...")
     processor = WhisperProcessor.from_pretrained(args.model_name)
     processor.tokenizer.set_prefix_tokens(language=args.language, task="transcribe")
     model = WhisperForConditionalGeneration.from_pretrained(args.model_name)
@@ -214,35 +219,51 @@ def main() -> None:
     model.generation_config.forced_decoder_ids = None
     model.config.use_cache = False
 
-    build_prompt(source, args.output_dir)
+    prompt_source = load_stream(args.data_dir)
+    build_prompt(prompt_source, args.output_dir)
+
+    train_source = load_stream(args.data_dir)
+    eval_source = load_stream(args.data_dir)
     train_dataset = WhisperRadioDataset(
-        source, processor, "train", args.eval_percent, args.max_samples, args.language
+        train_source, processor, "train", args.eval_percent, args.max_samples, args.language
     )
     eval_dataset = WhisperRadioDataset(
-        source, processor, "eval", args.eval_percent, args.max_samples, args.language
+        eval_source, processor, "eval", args.eval_percent, args.max_samples, args.language
     )
     use_cpu = not torch.cuda.is_available()
+
+    gradient_accumulation_steps = args.gradient_accumulation_steps
+    if args.max_samples is not None and args.max_samples < (args.per_device_train_batch_size * gradient_accumulation_steps):
+        gradient_accumulation_steps = max(1, args.max_samples // args.per_device_train_batch_size)
+
+    num_train_epochs = args.num_train_epochs
     max_steps = args.max_steps
-    if max_steps < 0:
+    if max_steps > 0:
+        num_train_epochs = max(num_train_epochs, 100.0)
+    else:
         max_steps = estimate_training_steps(
             args.data_dir,
             args.eval_percent,
             args.per_device_train_batch_size,
-            args.gradient_accumulation_steps,
+            gradient_accumulation_steps,
             args.num_train_epochs,
         )
         print(f"Streaming dataset detected; using {max_steps} optimizer steps")
+
+    logging_steps = 1 if max_steps <= 20 else 10
+    save_steps = max(1, min(250, max_steps))
+
     training_args = Seq2SeqTrainingArguments(
         output_dir=str(args.output_dir),
         per_device_train_batch_size=args.per_device_train_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         learning_rate=args.learning_rate,
-        num_train_epochs=args.num_train_epochs,
+        num_train_epochs=num_train_epochs,
         max_steps=max_steps,
-        warmup_steps=50,
-        logging_steps=10,
+        warmup_steps=min(50, max(1, max_steps // 5)),
+        logging_steps=logging_steps,
         save_strategy="steps",
-        save_steps=250,
+        save_steps=save_steps,
         save_total_limit=2,
         eval_strategy="no",
         predict_with_generate=False,
@@ -260,10 +281,11 @@ def main() -> None:
         data_collator=DataCollatorSpeechSeq2Seq(processor),
         processing_class=processor,
     )
+    print(f"Starting Whisper training (max_steps={max_steps}, batch_size={args.per_device_train_batch_size}, grad_accum={gradient_accumulation_steps})...")
     trainer.train()
     trainer.save_model(str(args.output_dir))
     processor.save_pretrained(str(args.output_dir))
-    print(f"Saved F1 radio Whisper model to {args.output_dir}")
+    print(f"Saved F1 radio Whisper model and artifacts to {args.output_dir}")
 
 
 if __name__ == "__main__":

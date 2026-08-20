@@ -86,7 +86,16 @@ def transcribe_audio_file(file_path: str) -> dict:
         if prompt:
             tokenizer = getattr(pipe, "tokenizer", None)
             if tokenizer is not None and hasattr(tokenizer, "get_prompt_ids"):
-                generate_kwargs["prompt_ids"] = tokenizer.get_prompt_ids(prompt)
+                try:
+                    import torch
+                    p_ids = tokenizer.get_prompt_ids(prompt, return_tensors="pt")
+                    if isinstance(p_ids, np.ndarray):
+                        p_ids = torch.from_numpy(p_ids)
+                    if hasattr(pipe, "model") and hasattr(pipe.model, "device"):
+                        p_ids = p_ids.to(pipe.model.device)
+                    generate_kwargs["prompt_ids"] = p_ids
+                except Exception as p_err:
+                    print(f"Warning: prompt_ids preparation failed: {p_err}")
         result = pipe(inputs, generate_kwargs=generate_kwargs)
         text = result.get("text", "").strip()
         

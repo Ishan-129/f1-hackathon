@@ -6,6 +6,7 @@ from app.models import AudioClipResponse, AudioAnalysisRequest, AudioAnalysisRes
 from app.transcriber import transcribe_audio_file
 from app.analytics import analyze_text_emotion, analyze_audio_emotion, compute_fusion_metrics
 import os
+import subprocess
 import soundfile as sf
 
 router = APIRouter(prefix="/api", tags=["Audio"])
@@ -27,10 +28,10 @@ def upload_audio(
 
     # 2. Verify file extension
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in [".wav", ".mp3"]:
+    if ext not in [".wav", ".mp3", ".webm"]:
         raise HTTPException(
             status_code=400,
-            detail="Unsupported audio format. Only WAV and MP3 are supported."
+            detail="Unsupported audio format. Only WAV, MP3, and WEBM are supported."
         )
 
     # 3. Create upload directory if it does not exist
@@ -47,6 +48,36 @@ def upload_audio(
             buffer.write(file.file.read())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+
+    # 5b. Convert webm to wav using ffmpeg (soundfile/Whisper need wav/mp3)
+    if ext == ".webm":
+        wav_filename = safe_filename.replace(".webm", ".wav")
+        wav_path = os.path.join(UPLOAD_DIR, wav_filename)
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-i", dest_path, "-ar", "16000", "-ac", "1", wav_path],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg error: {result.stderr}")
+            # Remove original webm, use wav going forward
+            os.remove(dest_path)
+            dest_path = wav_path
+            safe_filename = wav_filename
+        except FileNotFoundError:
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+            raise HTTPException(
+                status_code=500,
+                detail="ffmpeg is not installed. Install it to support live mic recordings (webm)."
+            )
+        except Exception as e:
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to convert webm to wav: {str(e)}"
+            )
 
     # 6. Read audio duration using soundfile
     try:

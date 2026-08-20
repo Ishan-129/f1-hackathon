@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { LayoutDashboard, Radio, Activity, Cpu } from 'lucide-react';
-import { useSession } from './context/SessionContext';
 
 interface SessionResponse {
   id: number;
@@ -14,12 +13,9 @@ interface SessionResponse {
 }
 
 export default function Home() {
-  const router = useRouter();
-  const { setSessionId, setSessionName, setConnected, triggerRefresh } = useSession();
   const [status, setStatus] = useState<string>('CONNECTING TO PITPULSE TELEMETRY BUS...');
   const [connected, setConnectedLocal] = useState<boolean>(false);
   const [data, setData] = useState<SessionResponse | null>(null);
-  const [loadingDemo, setLoadingDemo] = useState(false);
 
   useEffect(() => {
     const checkConnection = async () => {
@@ -41,57 +37,46 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const loadDemo = async () => {
-    setLoadingDemo(true);
-    try {
-      const res = await fetch("http://localhost:8000/api/session/demo", { method: "POST" });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setSessionId(data.id);
-      setSessionName(data.name);
-      setConnected(true);
-      triggerRefresh();
-      router.push('/dashboard');
-    } catch {
-      alert("Failed to load demo session. Is the backend server running?");
-    } finally {
-      setLoadingDemo(false);
-    }
-  };
-
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-black text-white font-mono">
-      <div className="z-10 max-w-4xl w-full flex flex-col gap-8 items-center">
-        
-        {/* Branding header */}
-        <div className="text-center space-y-2">
-          <div className="flex justify-center items-center gap-2 text-red-600 font-bold tracking-widest text-xs">
+    <main className="flex min-h-screen flex-col items-center justify-start p-0 bg-black text-white font-mono">
+
+      {/* Hero Section with F1 Car */}
+      <div className="relative w-full h-[420px] overflow-hidden">
+        <Image
+          src="/f1-car.jpeg"
+          alt="F1 Racing Car"
+          fill
+          className="object-cover object-center"
+          priority
+        />
+        {/* Dark gradient overlays for readability */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-transparent to-black/80" />
+
+        {/* Branding on top of hero */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+          <div className="flex justify-center items-center gap-2 text-red-600 font-bold tracking-widest text-xs mb-3">
             <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
             <span>{connected ? "LINK ONLINE" : "LINK OFFLINE"}</span>
           </div>
-          <h1 className="text-5xl font-black tracking-tighter italic uppercase">
+          <h1 className="text-6xl md:text-7xl font-black tracking-tighter italic uppercase drop-shadow-[0_0_30px_rgba(225,6,0,0.4)]">
             PIT<span className="text-red-600">PULSE</span>
           </h1>
-          <p className="text-xs text-gray-500 uppercase tracking-widest">
+          <p className="text-xs text-gray-300 uppercase tracking-[0.3em] mt-3">
             F1 Driver Acoustic Sentiment &amp; Telemetry Correlation
           </p>
+          {/* Animated red line accent */}
+          <div className="w-32 h-0.5 bg-gradient-to-r from-transparent via-red-600 to-transparent mt-4 animate-pulse" />
         </div>
+      </div>
 
-        {/* One-click Demo Button */}
-        <button
-          onClick={loadDemo}
-          disabled={loadingDemo}
-          className="w-full max-w-md bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 disabled:from-gray-800 disabled:to-gray-700 text-white font-black py-4 px-8 rounded-lg tracking-wider transition-all uppercase cursor-pointer text-sm border border-red-500/30 shadow-[0_0_30px_rgba(225,6,0,0.15)] hover:shadow-[0_0_40px_rgba(225,6,0,0.25)] flex items-center justify-center gap-3"
-        >
-          {loadingDemo && <span className="loading-spinner loading-spinner-sm" />}
-          {loadingDemo ? "LOADING DEMO SESSION..." : "▶ LOAD DEMO SESSION — ONE CLICK START"}
-        </button>
+      <div className="z-10 max-w-5xl w-full flex flex-col gap-8 items-center px-8 -mt-8">
 
         {/* Portal Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
           <Link 
             href="/dashboard" 
-            className="group bg-gray-950 border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-102"
+            className="group bg-gray-950/80 backdrop-blur-sm border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(225,6,0,0.1)]"
           >
             <div>
               <div className="flex justify-between items-start mb-4">
@@ -112,7 +97,7 @@ export default function Home() {
 
           <Link 
             href="/radio-analyzer" 
-            className="group bg-gray-950 border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-102"
+            className="group bg-gray-950/80 backdrop-blur-sm border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(225,6,0,0.1)]"
           >
             <div>
               <div className="flex justify-between items-start mb-4">
@@ -133,7 +118,7 @@ export default function Home() {
 
           <Link 
             href="/performance" 
-            className="group bg-gray-950 border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-102"
+            className="group bg-gray-950/80 backdrop-blur-sm border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(225,6,0,0.1)]"
           >
             <div>
               <div className="flex justify-between items-start mb-4">
@@ -154,7 +139,7 @@ export default function Home() {
 
           <Link 
             href="/insights" 
-            className="group bg-gray-950 border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-102"
+            className="group bg-gray-950/80 backdrop-blur-sm border border-gray-900 hover:border-red-600 p-6 rounded-lg flex flex-col justify-between transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(225,6,0,0.1)]"
           >
             <div>
               <div className="flex justify-between items-start mb-4">
@@ -175,7 +160,7 @@ export default function Home() {
         </div>
 
         {/* Status display */}
-        <div className="p-4 bg-gray-950 border border-gray-900 rounded-lg w-full max-w-2xl text-center">
+        <div className="p-4 bg-gray-950/80 backdrop-blur-sm border border-gray-900 rounded-lg w-full text-center mb-8">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{status}</p>
           {connected && data && (
             <div className="mt-3 text-xxs text-gray-500">
@@ -190,4 +175,3 @@ export default function Home() {
     </main>
   );
 }
-

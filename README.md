@@ -91,7 +91,7 @@ For a real fine-tune, use a CUDA machine and run the full corpus:
 
 ```powershell
 cd backend
-python train_model.py --output-dir models/f1-whisper --num-train-epochs 3
+python3 -c "import numpy; print(numpy.__version__)"
 ```
 
 Once `backend/models/f1-whisper/config.json` exists, the API automatically uses it for uploads. Set `PITPULSE_ASR_MODEL` to override the checkpoint path. The generated model directory is ignored by git because it contains large binary weights.
